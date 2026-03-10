@@ -61,8 +61,22 @@ col4.metric("Head Deviation", round(latest.get("head_deviation", 0), 2))
 df_display = df.tail(200)
 
 st.subheader("Focus Trend")
-fig_focus = px.line(df_display, y="focus_score", template="plotly_dark")
+fig_focus = px.line(
+    df_display, 
+    y="focus_score", 
+    template="plotly_dark"
+    )
 st.plotly_chart(fig_focus, use_container_width=True)
+
+st.subheader("Blink Rate")
+
+fig_blink = px.line(
+    df,
+    y="blink_rate",
+    template="plotly_dark"
+)
+
+st.plotly_chart(fig_blink, use_container_width=True)
 
 st.subheader("Gaze Stability")
 fig_gaze = px.line(df_display, y="gaze_score", template="plotly_dark")

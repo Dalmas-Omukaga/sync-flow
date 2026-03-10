@@ -98,20 +98,22 @@ class VisionPipeline:
 
     def sync_to_cloud(self):
         try:
-            # 1. Pull first to prevent "Rejected" errors (Merge Conflicts)
-            subprocess.run(["git", "pull", "origin", "main", "--rebase"], check=True)
+            # 1. Stage the specific file first so Git knows it's safe to sync
+            subprocess.run(["git", "add", self.LIVE_PATH], check=True)
         
-            # 2. Add the specific live file
-            subprocess.run(["git", "add", "data/live/focus_predictions_live.csv"], check=True)
+            # 2. Pull from GitHub (using --no-rebase to keep it simple)
+            # This brings down any changes from the cloud (like dashboard fixes)
+            subprocess.run(["git", "pull", "origin", "main", "--no-rebase"], check=True)
         
-            # 3. Commit with a unique timestamp
+            # 3. Commit with a timestamp
             subprocess.run(["git", "commit", "-m", f"sync: {int(time.time())}"], check=True)
         
-            # 4. Push
+            # 4. Push to the Cloud
             subprocess.run(["git", "push", "origin", "main"], check=True)
             print("✅ Cloud Sync Success!")
+        
         except subprocess.CalledProcessError as e:
-            print(f"⚠️ Git Sync Blocked: {e} (Likely Auth or No Changes)")
+            print(f"⚠️ Git Sync Issue: {e}")
 
     # ----------------------- SERVER -----------------------
     def connect_to_server(self):
