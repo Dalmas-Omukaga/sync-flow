@@ -10,9 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Replace with your actual GitHub Raw URL
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/Dalmas-Omukaga/sync-flow/main/data/live/live_focus_log.csv"
 
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/Dalmas-Omukaga/sync-flow/main/data/live/focus_predictions_live.csv"
 # -------- DATA LOADING --------
 def load_cloud_data():
     try:
