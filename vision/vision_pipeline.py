@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='google.protobuf.
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 import cv2
 import time
+import subprocess
 import numpy as np
 import socketio  # pip install "python-socketio[client]"
 from cvzone.FaceMeshModule import FaceMeshDetector
@@ -92,6 +93,19 @@ class VisionPipeline:
             self.focus_model = None
             self.scaler = None
 
+
+    def sync_to_cloud(self):
+        try:
+            # 1. Add the log file
+            subprocess.run(["git", "add", "data/live/live_focus_log.csv"], check=True)
+            # 2. Commit with a timestamp (to avoid merge conflicts)
+            subprocess.run(["git", "commit", "-m", f"data-sync: {time.time()}"], check=True)
+            # 3. Push to GitHub
+            subprocess.run(["git", "push", "origin", "main"], check=True)
+            print("🚀 Sync Successful: Data beamed to Cloud!")
+        except Exception as e:
+            print(f"❌ Sync Failed: {e}")
+
     # ----------------------- SERVER -----------------------
     def connect_to_server(self):
         try:
@@ -117,11 +131,12 @@ class VisionPipeline:
     # ----------------------- MAIN LOOP -----------------------
     def run(self):
         print("[INFO] Sync-Flow Vision Pipeline Active. ESC to quit.")
+        last_model_reload = time.time()
 
         while True:
+            self.frame_count += 1
             success, img = self.cap.read()
-            if not success:
-                break
+            if not success: break
 
             h, w, _ = img.shape
             img, faces = self.detector.findFaceMesh(img, draw=False)
@@ -129,43 +144,15 @@ class VisionPipeline:
             if faces and self.detector.results and self.detector.results.multi_face_landmarks:
                 raw_landmarks = self.detector.results.multi_face_landmarks[0].landmark
                 
-                # --- NEW: Calculate Bounding Box Manually ---
-                # faces[0] is a list of [x, y, z]. We find min/max to create the box.
-                face_points = np.array(faces[0])
+                # --- Step A: Feature Extraction ---
+                blink_data = self.blink_mod.update(faces[0])
+                gaze_data = self.gaze_mod.update(raw_landmarks, w, h)
+                pose_data = self.pose_mod.update(raw_landmarks, w, h)
 
-                # Get min and max across the columns
-                min_coords = np.min(face_points, axis=0)
-                max_coords = np.max(face_points, axis=0)
-
-                # Extract x and y regardless of whether it's 2D or 3D
-                x_min, y_min = int(min_coords[0]), int(min_coords[1])
-                x_max, y_max = int(max_coords[0]), int(max_coords[1])
-                
-                # Format: [x, y, width, height]
-                computed_bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
-
-                # --- Step A: Extract Biometric Features ---
-                # Access raw MediaPipe landmarks from the detector's internal results
-                if self.detector.results.multi_face_landmarks:
-                    raw_landmarks = self.detector.results.multi_face_landmarks[0].landmark
-                    
-                    blink_data = self.blink_mod.update(faces[0])
-                    # Use raw_landmarks here to avoid the 'list object' error
-                    gaze_data = self.gaze_mod.update(raw_landmarks, w, h)
-                    pose_data = self.pose_mod.update(raw_landmarks, w, h)
-                else:
-                    # Skip frame if face is lost
-                    continue
-
-                # --- NEW: Alignment Multiplier ---
-                # 1. Fix Gaze (Look for 'gaze_score' as defined in your GazeTracker)
+                # --- Step B: Data Alignment ---
                 live_gaze = gaze_data.get("gaze_score", 0)
-                
-                # Scale only if it's currently a decimal (0.0 to 1.0)
-                if 0 < live_gaze <= 1.0:
-                    live_gaze *= 100 
+                if 0 < live_gaze <= 1.0: live_gaze *= 100 
 
-                # 2. Fix Head Deviation (210.0 -> ~0.4)
                 raw_head = pose_data.get("head_deviation", 0)
                 live_head = min(1.0, raw_head / 500.0) 
 
@@ -175,10 +162,9 @@ class VisionPipeline:
                     "head_deviation": live_head
                 }
 
-                # --- Step B: Predict & Smooth Focus Score ---
+                # --- Step C: Focus Prediction ---
                 try:
                     if self.focus_model and self.scaler:
-                        # Use the 0-100 aligned gaze score here
                         X = pd.DataFrame([[
                             combined_features["blink_rate"],
                             combined_features["gaze_score"],
@@ -186,75 +172,60 @@ class VisionPipeline:
                         ]], columns=["blink_rate", "gaze_score", "head_deviation"])
                         
                         X_scaled = self.scaler.transform(X)
-                        # Predict (0-4) and scale to (0-100%)
                         raw_score = float(self.focus_model.predict(X_scaled)[0]) * 25
                     else:
                         raw_score = self.attention_model.compute_focus(combined_features)
                     
-                    # Apply Smoothing (Moving Average)
                     self.score_buffer.append(raw_score)
                     if len(self.score_buffer) > 15: self.score_buffer.pop(0)
                     focus_score = sum(self.score_buffer) / len(self.score_buffer)
                 except Exception as e:
-                    print(f"Prediction error: {e}")
-                    #focus_score = 0.0
                     focus_score = self.attention_model.compute_focus(combined_features)
 
                 focus_label = self.focus_label_from_score(focus_score)
 
-                # --- Step C: Cyberpunk Face Reticle (Using computed_bbox) ---
-                self.draw_reticle(img, computed_bbox, focus_score)
-
-                if int(time.time()) % 300 == 0:
-                     self.load_focus_model()
-
-                # --- Step C: Send to server & Log (With Throttling) ---
+                # --- Step D: Throttled Logging & Sync ---
                 current_time = time.time()
+                
+                # Trigger Cloud Sync (Fixed Variables)
+                if self.frame_count % 900 == 0:
+                    self.sync_to_cloud()
+
+                # Periodic Model Reload (Fixed to avoid 30x reload)
+                if current_time - last_model_reload > 300:
+                    self.load_focus_model()
+                    last_model_reload = current_time
+
                 if current_time - self.last_send_time > self.send_interval:
                     log_data = {
                         "timestamp": current_time,
                         "blink_rate": combined_features["blink_rate"],
-                        "gaze_score": combined_features["gaze_score"], # Consistency!
+                        "gaze_score": combined_features["gaze_score"],
                         "head_deviation": combined_features["head_deviation"],
                         "focus_score": round(focus_score, 2),
-                        "focus_label": focus_label,
-                        **combined_features
+                        "focus_label": focus_label
                     }
+                    
+                    # Update Live CSV (For Streamlit Cloud)
                     df = pd.DataFrame([log_data])
-                    if not os.path.exists(self.LIVE_PATH):
-                        df.to_csv(self.LIVE_PATH, index=False)
-                    else:
-                        df.to_csv(self.LIVE_PATH, mode="a", header=False, index=False)
-        
+                    df.to_csv(self.LIVE_PATH, mode='a', header=not os.path.exists(self.LIVE_PATH), index=False)
 
-                    # 1. Send to Server
                     if self.connected:
                         self.sio.emit('vision_data', log_data)
-
-                    self.last_send_time = current_time
                     
-                    # 2. Log to CSV (Now also throttled)
-                    with open(self.log_file, mode='a', newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerow([
-                            current_time, 
-                            combined_features['blink_rate'], 
-                            combined_features['gaze_score'], 
-                            combined_features['head_deviation'], 
-                            round(focus_score, 2), 
-                            focus_label
-                        ])
-                    
-                    # 3. Update the timer
                     self.last_send_time = current_time
 
-                # --- Step E: Render UI (Still happens every frame for smoothness) ---
+                # --- Step E: Render UI ---
+                # Calculate bounding box for the reticle
+                face_points = np.array(faces[0])
+                min_c, max_c = np.min(face_points, axis=0), np.max(face_points, axis=0)
+                computed_bbox = [int(min_c[0]), int(min_c[1]), int(max_c[0]-min_c[0]), int(max_c[1]-min_c[1])]
+                
+                self.draw_reticle(img, computed_bbox, focus_score)
                 self.render_overlay(img, focus_score, focus_label, combined_features)
 
-            self.render_fps(img)
             cv2.imshow("Sync-Flow Integrated Vision", img)
-            if cv2.waitKey(1) & 0xFF == 27:
-                break
+            if cv2.waitKey(1) & 0xFF == 27: break
 
         self.cleanup()
 
