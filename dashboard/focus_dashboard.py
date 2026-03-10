@@ -21,6 +21,7 @@ def load_cloud_data():
         return df if not df.empty else None
     except Exception as e:
         # If the file doesn't exist on GitHub yet, show a friendly message
+        st.toast(f"Fetch Error: {e}")
         return None
 
 st.title("🧠 Real-Time Focus Monitoring")

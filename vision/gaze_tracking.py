@@ -102,11 +102,11 @@ class GazeTracker:
 
 
             # --- debug ---
-            print(
-                f"Gaze Ratio: {ratio:.2f} | "
-                f"Direction: {gaze_direction} | "
-                f"Focus: {focus_score:.1f}"
-            )
+           # print(
+            #    f"Gaze Ratio: {ratio:.2f} | "
+             #   f"Direction: {gaze_direction} | "
+              #  f"Focus: {focus_score:.1f}"
+            #)
 
 
         except Exception as e:

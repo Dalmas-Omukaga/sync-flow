@@ -6,7 +6,6 @@ venv/
 .env
 
 # Data
-data/live/*.csv
 !data/live/.gitkeep
 
 # IDEs

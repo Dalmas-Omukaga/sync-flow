@@ -28,7 +28,7 @@ if not hasattr(mp, 'solutions'):
 class VisionPipeline:
     def __init__(self, server_url="http://localhost:5000"):
         self.frame_count = 0
-        
+
         self.LIVE_PATH = "data/live/focus_predictions_live.csv"
         os.makedirs("data/live", exist_ok=True)
         # 1. Hardware & Core AI
@@ -98,15 +98,20 @@ class VisionPipeline:
 
     def sync_to_cloud(self):
         try:
-            # 1. Add the log file
-            subprocess.run(["git", "add", "data/live/live_focus_log.csv"], check=True)
-            # 2. Commit with a timestamp (to avoid merge conflicts)
-            subprocess.run(["git", "commit", "-m", f"data-sync: {time.time()}"], check=True)
-            # 3. Push to GitHub
+            # 1. Pull first to prevent "Rejected" errors (Merge Conflicts)
+            subprocess.run(["git", "pull", "origin", "main", "--rebase"], check=True)
+        
+            # 2. Add the specific live file
+            subprocess.run(["git", "add", "data/live/focus_predictions_live.csv"], check=True)
+        
+            # 3. Commit with a unique timestamp
+            subprocess.run(["git", "commit", "-m", f"sync: {int(time.time())}"], check=True)
+        
+            # 4. Push
             subprocess.run(["git", "push", "origin", "main"], check=True)
-            print("🚀 Sync Successful: Data beamed to Cloud!")
-        except Exception as e:
-            print(f"❌ Sync Failed: {e}")
+            print("✅ Cloud Sync Success!")
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️ Git Sync Blocked: {e} (Likely Auth or No Changes)")
 
     # ----------------------- SERVER -----------------------
     def connect_to_server(self):
