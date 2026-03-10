@@ -27,6 +27,8 @@ if not hasattr(mp, 'solutions'):
 
 class VisionPipeline:
     def __init__(self, server_url="http://localhost:5000"):
+        self.frame_count = 0
+        
         self.LIVE_PATH = "data/live/focus_predictions_live.csv"
         os.makedirs("data/live", exist_ok=True)
         # 1. Hardware & Core AI
