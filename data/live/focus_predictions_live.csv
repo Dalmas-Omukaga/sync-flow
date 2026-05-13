@@ -1424,3 +1424,6 @@ timestamp,blink_rate,gaze_score,head_deviation,focus_score,focus_label
 1778669349.1842287,75.19,81.3,0.05,17.68,very_dist_distracted
 1778669359.2227435,71.3,61.9,0.0906,17.81,very_dist_distracted
 1778669369.2263498,72.38,20.3,0.055,17.81,very_dist_distracted
+1778669382.2278507,74.09,57.5,0.08059999999999999,17.03,very_dist_distracted
+1778669392.2541335,72.75,52.4,0.0354,17.81,very_dist_distracted
+1778669402.2669492,74.16,92.3,0.0732,17.03,very_dist_distracted
